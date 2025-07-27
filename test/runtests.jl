@@ -208,4 +208,70 @@ end
         @test eltype(lux_small(xy_f32)) == Float32
         @test eltype(lux_linear(xy_f32)) == Float32
     end
+    
+    @testset "Matrix-Based Constructor Tests" begin
+        # Generate some test data
+        n_samples = 100
+        X_data = rand(Float32, 2, n_samples) * 2 .- 1  # Random data in [-1, 1]
+        Y_data = zeros(Float32, 2, n_samples)
+        
+        # Generate corresponding outputs using test_func
+        for i in 1:n_samples
+            Y_data[:, i] = test_func(X_data[:, i])
+        end
+        
+        # Test matrix-based constructor with default settings
+        lux_matrix = LuxSurrogate(X_data, Y_data; maxiters=10)
+        @test lux_matrix isa LuxSurrogate
+        @test lux_matrix.input_dim == 2
+        @test lux_matrix.output_dim == 2
+        
+        # Test evaluation
+        test_input = [0.5, 0.5]
+        result_matrix = lux_matrix(test_input)
+        @test length(result_matrix) == 2
+        @test all(isfinite.(result_matrix))
+        
+        # Test with custom parameters
+        lux_matrix_custom = LuxSurrogate(X_data, Y_data; 
+                                        hidden_layers=[8, 8], 
+                                        activation=relu, 
+                                        maxiters=5)
+        @test lux_matrix_custom isa LuxSurrogate
+        result_custom = lux_matrix_custom(test_input)
+        @test length(result_custom) == 2
+        @test all(isfinite.(result_custom))
+        
+        # Test type preservation
+        xy_f32 = Float32[0.5f0, 0.5f0]
+        result_f32 = lux_matrix(xy_f32)
+        @test eltype(result_f32) == Float32
+        
+        xy_f64 = [0.5, 0.5]
+        result_f64 = lux_matrix(xy_f64)
+        @test eltype(result_f64) == Float64
+        
+        # Test with explicit range specification
+        custom_range = [[-2.0, 2.0], [-1.5, 1.5]]
+        lux_range = LuxSurrogate(X_data, Y_data; range=custom_range, maxiters=5)
+        @test lux_range.input_ranges == custom_range
+        
+        # Test save/load functionality with matrix-based constructor
+        test_file = "matrix_surrogate.lux"
+        luxsave(lux_matrix, test_file)
+        @test isfile(test_file)
+        
+        lux_loaded = luxload(test_file)
+        @test lux_loaded isa LuxSurrogate
+        @test lux_loaded.input_dim == lux_matrix.input_dim
+        @test lux_loaded.output_dim == lux_matrix.output_dim
+        
+        # Test consistency between original and loaded
+        result_original = lux_matrix(test_input)
+        result_loaded = lux_loaded(test_input)
+        @test norm(result_original - result_loaded) < 1e-10
+        
+        # Clean up
+        rm(test_file, force=true)
+    end
 end

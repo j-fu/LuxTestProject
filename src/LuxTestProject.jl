@@ -34,7 +34,26 @@ mutable struct LuxSurrogate <: AbstractLuxSurrogate
     input_ranges::Vector{Vector{Float64}}
 end
 
+"""
+    LuxSurrogate(input, Y_train; range=extrema(input, dims=2), X_train=similar(input), hidden_layers=[16, 32, 16], activation=tanh, optimizer=BFGS(), maxiters=100)
 
+Create and train a LuxSurrogate from pre-computed training data.
+
+Parameters
+- `input`: AbstractMatrix of size (input_dim, n_samples) containing input training data
+- `Y_train`: AbstractMatrix of size (output_dim, n_samples) containing output training data
+
+Keyword Arguments
+- `range`: Input ranges for normalization. Default is extrema(input, dims=2)
+- `X_train`: Pre-allocated matrix for normalized inputs. Default is similar(input)
+- `hidden_layers`: Vector of hidden layer sizes (default: [16, 32, 16])
+- `activation`: Activation function for hidden layers (default: tanh)
+- `optimizer`: Optimization algorithm (default: BFGS())
+- `maxiters`: Maximum number of optimization iterations (default: 100)
+
+Return:
+Trained neural network surrogate.
+"""
 function LuxSurrogate(
         input::AbstractMatrix,
         Y_train::AbstractMatrix;
@@ -47,8 +66,9 @@ function LuxSurrogate(
     )
     input_dim = size(input, 1)
     output_dim = size(Y_train, 1)
+
     for i in 1:input_dim
-        min_val, max_val = Float32(range[i][1]), Float32(range[i][2])
+        min_val, max_val = range[i][1], range[i][2]
         @views X_train[i, :] = 2.0f0 * (input[i, :] .- min_val) / (max_val - min_val) .- 1.0f0
     end
 
@@ -93,18 +113,23 @@ function LuxSurrogate(
     # Train the model
     result = solve(optprob, optimizer, maxiters = maxiters)
 
-    return LuxSurrogate(model, result.u, state, input_dim, output_dim, range)
+    # Convert range to the expected format (Vector{Vector{Float64}})
+    # range from extrema is a Matrix of Tuples, we need Vector of Vectors
+    range_converted = [Float64[range[i][1], range[i][2]] for i in 1:size(range, 1)]
+
+    return LuxSurrogate(model, result.u, state, input_dim, output_dim, range_converted)
 end
 
 """
     LuxSurrogate(func, range; n_samples=500, hidden_layers=[16, 32, 16], activation=tanh, optimizer=BFGS(), maxiters=100)
 
-Create and train a lux based surrogate for the function `func`.
+Create and train a LuxSurrogate by sampling a function.
+
 Parameters
-- `func`: function or callable object with signature `output = func(input)` where
+- `func`: Function or callable object with signature `output = func(input)` where
    input is a vector of length n and output is an AbstractVector of length m.
-   The output can also be a tuple or scalar, which will be automatically converted to a vector.
-- `range`: n-vector of 2-vectors describing the training range
+   The output can also be a scalar, which will be automatically converted to a vector.
+- `range`: Vector of 2-element vectors describing the input ranges for sampling, e.g., [[-1.0, 1.0], [0.0, 2.0]]
 
 Keyword Arguments
 - `n_samples`: Number of training samples to generate (default: 500)
@@ -114,7 +139,22 @@ Keyword Arguments
 - `maxiters`: Maximum number of optimization iterations (default: 100)
 
 Return:
-Trained neural network.
+Trained neural network surrogate.
+
+Example:
+```julia
+# Define a function to approximate
+f(x) = [x[1]^2 + x[2], sin(x[1]) * x[2]]
+
+# Create surrogate with custom settings
+lux = LuxSurrogate(f, [[-1.0, 1.0], [0.0, 2.0]]; 
+                   n_samples=1000, 
+                   hidden_layers=[32, 64, 32],
+                   activation=relu)
+
+# Use the surrogate
+result = lux([0.5, 1.0])
+```
 """
 function LuxSurrogate(
         func::TF,
@@ -132,7 +172,6 @@ function LuxSurrogate(
     # Determine output dimension by calling the function
     test_output = func(test_input)
     output_dim = length(test_output)
-
 
     # Generate training data (use Float32 for consistency)
     X_train = zeros(Float32, input_dim, n_samples)
@@ -233,10 +272,29 @@ function _deserialize_model(layers_data)
 end
 
 """
-   (lux::LuxSurrogate)(input)
+    (lux::LuxSurrogate)(input)
 
-Make LuxSurrogate callable. Evaluate trained surrogate at n-vector `input`, returns m-vector result.
-The output will have the same element type as the input.
+Make LuxSurrogate callable. Evaluate the trained surrogate at input vector.
+
+Parameters
+- `input`: Input vector of length n matching the surrogate's input dimension
+
+Returns
+- Output vector of length m with the same element type as the input
+
+The input is automatically normalized to the training range and clamped to valid bounds.
+Type preservation ensures that Float32 inputs produce Float32 outputs, etc.
+
+Example:
+```julia
+lux = LuxSurrogate(func, [[-1.0, 1.0], [0.0, 1.0]])
+
+# Float64 input produces Float64 output
+result_f64 = lux([0.5, 0.3])
+
+# Float32 input produces Float32 output  
+result_f32 = lux(Float32[0.5, 0.3])
+```
 """
 function (lux::LuxSurrogate)(input)
     T = eltype(input)  # Get the element type of input
