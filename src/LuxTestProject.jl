@@ -10,7 +10,7 @@ using LinearAlgebra
 using Zygote  # Add Zygote for automatic differentiation
 
 # Export the main types and functions
-export AbstractLuxSurrogate, LuxSurrogate, luxsave, luxload, luxeval!
+export AbstractLuxSurrogate, LuxSurrogate, luxsave, luxload, luxeval!, luxeval
 
 """
    AbstractLuxSurrogate
@@ -39,12 +39,12 @@ end
 
 Create and train a lux based surrogate for the function `func`.
 Parameters
-- `func`: function or callable object with signature `func(result, input)` where
-   input is an vector of length n. The output of `func` is written into the vector `result`. 
-- `range`: n-vector of 2-vectors descring the training rang
+- `func`: function or callable object with signature `output = func(input)` where
+   input is a vector of length n and output is a vector of length m.
+- `range`: n-vector of 2-vectors describing the training range
 
 Return:
-Trained neuronal network.
+Trained neural network.
 """
 function LuxSurrogate(
         func::TF,
@@ -57,34 +57,9 @@ function LuxSurrogate(
     # Create a test input to determine output dimension
     test_input = [0.5 * (r[1] + r[2]) for r in range]
     
-    # Try different output sizes to determine the actual output dimension
-    output_dim = nothing
-    for trial_dim in [1, 2, 3, 5, 10]
-        try
-            test_output = zeros(trial_dim)
-            func(test_output, test_input)
-            
-            # Count non-zero elements to determine actual output dimension
-            actual_outputs = 0
-            for i in 1:trial_dim
-                if abs(test_output[i]) > 1e-12  # Use small tolerance instead of exact zero
-                    actual_outputs = i
-                end
-            end
-            
-            if actual_outputs > 0
-                output_dim = actual_outputs
-                break
-            end
-        catch
-            continue
-        end
-    end
-    
-    # Fallback if we couldn't determine the dimension
-    if output_dim === nothing
-        output_dim = 2  # Default assumption
-    end
+    # Determine output dimension by calling the function
+    test_output = func(test_input)
+    output_dim = length(test_output)
     
     # Create neural network architecture (smaller for faster training)
     model = Chain(
@@ -107,18 +82,16 @@ function LuxSurrogate(
     for i in 1:n_samples
         # Generate random input within the specified ranges
         input = [Float32(range[j][1] + rand() * (range[j][2] - range[j][1])) for j in 1:input_dim]
-        output = zeros(Float64, output_dim)  # Use Float64 for function evaluation
         
         try
-            func(output, input)
+            output = func(input)
+            X_train[:, i] = Float32.(input)
+            Y_train[:, i] = Float32.(output)  # Convert to Float32
         catch e
             # If function fails, skip this sample and try again
             i -= 1
             continue
         end
-        
-        X_train[:, i] = Float32.(input)
-        Y_train[:, i] = Float32.(output)  # Convert to Float32
     end
     
     # Normalize inputs to [-1, 1] (keep as Float32)
@@ -224,7 +197,7 @@ end
 """
    luxeval!(result, lux::LuxSurrogate, input)
 
-Evalute trained surrogate at n-vector `input`, result is writen to m-vector `result`
+Evaluate trained surrogate at n-vector `input`, result is written to m-vector `result`
 """
 function luxeval!(result, lux::LuxSurrogate, input)
     # Normalize input to the same range used during training (use Float32)
@@ -245,6 +218,17 @@ function luxeval!(result, lux::LuxSurrogate, input)
     end
     
     return nothing
+end
+
+"""
+   luxeval(lux::LuxSurrogate, input)
+
+Evaluate trained surrogate at n-vector `input`, returns m-vector result
+"""
+function luxeval(lux::LuxSurrogate, input)
+    result = zeros(lux.output_dim)
+    luxeval!(result, lux, input)
+    return result
 end
 
 end # module LuxTestProject

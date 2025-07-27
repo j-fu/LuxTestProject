@@ -4,13 +4,13 @@ using LinearAlgebra
 
 # Test the exact example from the README to ensure it works as documented
 @testset "README Example Test" begin
-    function original!(result, input)
-        result[1] = input[1]^2 + sin(input[2]^2)
-        result[2] = input[1]^3 + 1/input[2]
-        return nothing
+    function original(input)
+        result1 = input[1]^2 + sin(input[2]^2)
+        result2 = input[1]^3 + 1/input[2]
+        return [result1, result2]
     end
 
-    lux = LuxSurrogate(original!, [[-1.0, 1.0], [0.1, 5.0]])
+    lux = LuxSurrogate(original, [[-1.0, 1.0], [0.1, 5.0]])
 
     luxsave(lux, "test.lux")
 
@@ -18,10 +18,8 @@ using LinearAlgebra
 
     # Use a point within the training range (modified from README for robustness)
     xy = [0.5, 2.0]  
-    oresult = zeros(2)
-    luxresult = zeros(2)
-    original!(oresult, xy)
-    luxeval!(luxresult, lux1, xy)
+    oresult = original(xy)
+    luxresult = luxeval(lux1, xy)
     
     error_norm = norm(oresult - luxresult)
     

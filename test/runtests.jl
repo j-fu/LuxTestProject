@@ -3,17 +3,17 @@ using Test
 using LinearAlgebra
 
 # Test function for the surrogate (simpler for faster training)
-function test_func!(result, input)
-    result[1] = input[1]^2 + input[2]
-    result[2] = input[1] + input[2]^2
-    return nothing
+function test_func(input)
+    result1 = input[1]^2 + input[2]
+    result2 = input[1] + input[2]^2
+    return [result1, result2]
 end
 
 # More complex function for README test
-function original!(result, input)
-    result[1] = input[1]^2 + sin(input[2]^2)
-    result[2] = input[1]^3 + 1/input[2]
-    return nothing
+function original(input)
+    result1 = input[1]^2 + sin(input[2]^2)
+    result2 = input[1]^3 + 1/input[2]
+    return [result1, result2]
 end
 
 @testset "LuxTestProject.jl" begin
@@ -23,7 +23,7 @@ end
     
     @testset "Basic Surrogate Creation and Training" begin
         # Test surrogate creation with simpler function
-        lux = LuxSurrogate(test_func!, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
         
         @test lux isa LuxSurrogate
         @test lux.input_dim == 2
@@ -34,7 +34,7 @@ end
     end
     
     @testset "Save and Load Functionality" begin
-        lux = LuxSurrogate(test_func!, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
         
         # Test saving
         test_file = "test_surrogate.lux"
@@ -53,7 +53,7 @@ end
     end
     
     @testset "Surrogate Evaluation Accuracy" begin
-        lux = LuxSurrogate(test_func!, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
         
         # Test fewer points for faster execution
         test_points = [
@@ -63,11 +63,8 @@ end
         ]
         
         for xy in test_points
-            oresult = zeros(2)
-            luxresult = zeros(2)
-            
-            test_func!(oresult, xy)
-            luxeval!(luxresult, lux, xy)
+            oresult = test_func(xy)
+            luxresult = luxeval(lux, xy)
             
             error_norm = norm(oresult - luxresult)
             
@@ -80,27 +77,34 @@ end
     end
     
     @testset "Edge Cases and Error Handling" begin
-        lux = LuxSurrogate(test_func!, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
         
         # Test evaluation with points outside training range (should be clamped)
         xy_outside = [2.0, 2.0]  # Outside the training ranges
-        result = zeros(2)
         
         # Should not throw an error due to clamping
-        @test_nowarn luxeval!(result, lux, xy_outside)
+        result = luxeval(lux, xy_outside)
+        @test_nowarn result = luxeval(lux, xy_outside)
         @test all(isfinite.(result))
         
         # Test with minimum valid input
         xy_min = [-1.0, -1.0]
-        @test_nowarn luxeval!(result, lux, xy_min)
+        result_min = luxeval(lux, xy_min)
+        @test_nowarn result_min = luxeval(lux, xy_min)
         
         # Test with maximum valid input  
         xy_max = [1.0, 1.0]
-        @test_nowarn luxeval!(result, lux, xy_max)
+        result_max = luxeval(lux, xy_max)
+        @test_nowarn result_max = luxeval(lux, xy_max)
+        
+        # Test the mutating version as well
+        result_mut = zeros(2)
+        @test_nowarn luxeval!(result_mut, lux, xy_outside)
+        @test all(isfinite.(result_mut))
     end
     
     @testset "Consistency Between Original and Loaded Surrogate" begin
-        lux = LuxSurrogate(test_func!, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
         
         test_file = "consistency_test.lux"
         luxsave(lux, test_file)
@@ -108,11 +112,8 @@ end
         
         # Test that original and loaded surrogates give same results
         xy = [0.3, 0.3]
-        result1 = zeros(2)
-        result2 = zeros(2)
-        
-        luxeval!(result1, lux, xy)
-        luxeval!(result2, lux_loaded, xy)
+        result1 = luxeval(lux, xy)
+        result2 = luxeval(lux_loaded, xy)
         
         @test norm(result1 - result2) < 1e-10  # Should be essentially identical
         
@@ -122,19 +123,27 @@ end
     
     @testset "Different Function Output Dimensions" begin
         # Test with single output function (simpler)
-        function single_output!(result, input)
-            result[1] = input[1]^2 + input[2]^2
-            return nothing
+        function single_output(input)
+            return [input[1]^2 + input[2]^2]
         end
         
-        lux_single = LuxSurrogate(single_output!, [[-1.0, 1.0], [-1.0, 1.0]])
-        # Note: Our current implementation detects the minimum number of outputs needed
-        # Since we test with zeros(2), it will detect output_dim = 2 even if only first element is used
-        @test lux_single.output_dim >= 1  # Should detect at least 1 output dimension
+        lux_single = LuxSurrogate(single_output, [[-1.0, 1.0], [-1.0, 1.0]])
+        @test lux_single.output_dim == 1  # Should correctly detect 1 output dimension
         
-        result = zeros(1)
-        luxeval!(result, lux_single, [0.5, 0.5])
+        result = luxeval(lux_single, [0.5, 0.5])
         @test length(result) == 1
         @test isfinite(result[1])
+        
+        # Test with 3-output function
+        function triple_output(input)
+            return [input[1]^2, input[2]^2, input[1] * input[2]]
+        end
+        
+        lux_triple = LuxSurrogate(triple_output, [[-1.0, 1.0], [-1.0, 1.0]])
+        @test lux_triple.output_dim == 3  # Should correctly detect 3 output dimensions
+        
+        result_triple = luxeval(lux_triple, [0.5, 0.5])
+        @test length(result_triple) == 3
+        @test all(isfinite.(result_triple))
     end
 end
