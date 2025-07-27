@@ -2,6 +2,10 @@ LuxTestProject
 =============
 
 Test neural network training based on Lux.jl.
+This project has been created in order to learn Lux.jl, and in order to learn
+to work with Github Copilot under Visual Studio code.  Almost all code has been initially
+created by Claude Sonnet 4 via Github Copilot after being given a skeleton for start.
+It has seen guidance and various improvements by the human author.
 
 ## Features
 

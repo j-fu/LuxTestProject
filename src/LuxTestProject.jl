@@ -274,7 +274,7 @@ end
 """
     (lux::LuxSurrogate)(input)
 
-Make LuxSurrogate callable. Evaluate the trained surrogate at input vector.
+Evaluate the trained surrogate at input vector.
 
 Parameters
 - `input`: Input vector of length n matching the surrogate's input dimension
@@ -282,8 +282,7 @@ Parameters
 Returns
 - Output vector of length m with the same element type as the input
 
-The input is automatically normalized to the training range and clamped to valid bounds.
-Type preservation ensures that Float32 inputs produce Float32 outputs, etc.
+The input is automatically normalized to the training range.
 
 Example:
 ```julia
@@ -297,8 +296,6 @@ result_f32 = lux(Float32[0.5, 0.3])
 ```
 """
 function (lux::LuxSurrogate)(input)
-    T = eltype(input)  # Get the element type of input
-
     # Normalize input to the same range used during training
     normalized_input = zeros(T, lux.input_dim)
     for i in 1:lux.input_dim
@@ -309,7 +306,6 @@ function (lux::LuxSurrogate)(input)
     # Evaluate the model
     output, _ = Lux.apply(lux.model, normalized_input, lux.parameters, lux.state)
 
-    # Convert to the same type as input
     return output
 end
 
