@@ -35,7 +35,7 @@ mutable struct LuxSurrogate <: AbstractLuxSurrogate
 end
 
 """
-    LuxSurrogate(func, range)
+    LuxSurrogate(func, range; n_samples=500, hidden_layers=[16, 32, 16], activation=tanh, optimizer=BFGS(), maxiters=100)
 
 Create and train a lux based surrogate for the function `func`.
 Parameters
@@ -43,12 +43,24 @@ Parameters
    input is a vector of length n and output is a vector of length m.
 - `range`: n-vector of 2-vectors describing the training range
 
+Keyword Arguments
+- `n_samples`: Number of training samples to generate (default: 500)
+- `hidden_layers`: Vector of hidden layer sizes (default: [16, 32, 16])
+- `activation`: Activation function for hidden layers (default: tanh)
+- `optimizer`: Optimization algorithm (default: BFGS())
+- `maxiters`: Maximum number of optimization iterations (default: 100)
+
 Return:
 Trained neural network.
 """
 function LuxSurrogate(
         func::TF,
-        range::Vector{Vector{Float64}}
+        range::Vector{Vector{Float64}};
+        n_samples::Int = 500,
+        hidden_layers::Vector{Int} = [16, 32, 16],
+        activation = tanh,
+        optimizer = BFGS(),
+        maxiters::Int = 100
     ) where {TF}
     
     # Determine dimensions
@@ -61,13 +73,26 @@ function LuxSurrogate(
     test_output = func(test_input)
     output_dim = length(test_output)
     
-    # Create neural network architecture (smaller for faster training)
-    model = Chain(
-        Dense(input_dim => 16, tanh),
-        Dense(16 => 32, tanh),
-        Dense(32 => 16, tanh),
-        Dense(16 => output_dim)
-    )
+    # Create neural network architecture using keyword arguments
+    layers = []
+    
+    # Input layer
+    if length(hidden_layers) > 0
+        push!(layers, Dense(input_dim => hidden_layers[1], activation))
+        
+        # Hidden layers
+        for i in 1:(length(hidden_layers)-1)
+            push!(layers, Dense(hidden_layers[i] => hidden_layers[i+1], activation))
+        end
+        
+        # Output layer
+        push!(layers, Dense(hidden_layers[end] => output_dim))
+    else
+        # If no hidden layers, direct input to output
+        push!(layers, Dense(input_dim => output_dim))
+    end
+    
+    model = Chain(layers...)
     
     # Initialize parameters and state
     rng = Random.default_rng()
@@ -75,7 +100,6 @@ function LuxSurrogate(
     parameters = ComponentArray(parameters)
     
     # Generate training data (use Float32 for consistency)
-    n_samples = 500  # Reduced for faster training
     X_train = zeros(Float32, input_dim, n_samples)
     Y_train = zeros(Float32, output_dim, n_samples)
     
@@ -113,8 +137,8 @@ function LuxSurrogate(
     optf = OptimizationFunction(loss_function, Optimization.AutoZygote())
     optprob = OptimizationProblem(optf, parameters, data)
     
-    # Train the model (fewer iterations for faster training)
-    result = solve(optprob, BFGS(), maxiters=100)
+    # Train the model
+    result = solve(optprob, optimizer, maxiters=maxiters)
     
     return LuxSurrogate(model, result.u, state, input_dim, output_dim, range)
 end

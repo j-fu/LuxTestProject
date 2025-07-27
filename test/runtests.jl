@@ -1,6 +1,8 @@
 using LuxTestProject
 using Test
 using LinearAlgebra
+using OptimizationOptimJL
+using Lux: relu, sigmoid
 
 # Test function for the surrogate (simpler for faster training)
 function test_func(input)
@@ -22,8 +24,8 @@ end
     include("readme_example_test.jl")
     
     @testset "Basic Surrogate Creation and Training" begin
-        # Test surrogate creation with simpler function
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        # Test surrogate creation with simpler function (faster parameters)
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=100, maxiters=20)
         
         @test lux isa LuxSurrogate
         @test lux.input_dim == 2
@@ -34,7 +36,7 @@ end
     end
     
     @testset "Save and Load Functionality" begin
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=50, maxiters=10)
         
         # Test saving
         test_file = "test_surrogate.lux"
@@ -53,7 +55,7 @@ end
     end
     
     @testset "Surrogate Evaluation Accuracy" begin
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=50, maxiters=15)
         
         # Test fewer points for faster execution
         test_points = [
@@ -77,7 +79,7 @@ end
     end
     
     @testset "Edge Cases and Error Handling" begin
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=40, maxiters=10)
         
         # Test evaluation with points outside training range (should be clamped)
         xy_outside = [2.0, 2.0]  # Outside the training ranges
@@ -99,7 +101,7 @@ end
     end
     
     @testset "Consistency Between Original and Loaded Surrogate" begin
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=30, maxiters=8)
         
         test_file = "consistency_test.lux"
         luxsave(lux, test_file)
@@ -122,7 +124,7 @@ end
             return [input[1]^2 + input[2]^2]
         end
         
-        lux_single = LuxSurrogate(single_output, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux_single = LuxSurrogate(single_output, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=30, maxiters=8)
         @test lux_single.output_dim == 1  # Should correctly detect 1 output dimension
         
         result = lux_single([0.5, 0.5])  # Using callable interface
@@ -134,7 +136,7 @@ end
             return [input[1]^2, input[2]^2, input[1] * input[2]]
         end
         
-        lux_triple = LuxSurrogate(triple_output, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux_triple = LuxSurrogate(triple_output, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=30, maxiters=8)
         @test lux_triple.output_dim == 3  # Should correctly detect 3 output dimensions
         
         result_triple = lux_triple([0.5, 0.5])  # Using callable interface
@@ -143,7 +145,7 @@ end
     end
     
     @testset "Type Preservation Tests" begin
-        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=30, maxiters=8)
         
         # Test with Float64 input
         xy_f64 = [0.5, 0.5]
@@ -162,5 +164,48 @@ end
         result_big = lux(xy_big)
         @test eltype(result_big) == BigFloat
         @test eltype(xy_big) == eltype(result_big)
+    end
+    
+    @testset "Keyword Arguments Tests" begin
+        # Test with custom n_samples (smaller for speed)
+        lux_samples = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; n_samples=50, maxiters=10)
+        @test lux_samples isa LuxSurrogate
+        result_samples = lux_samples([0.5, 0.5])
+        @test all(isfinite.(result_samples))
+        @test length(result_samples) == 2
+        
+        # Test with smaller hidden layers
+        lux_small = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; hidden_layers=[5], n_samples=30, maxiters=5)
+        @test lux_small isa LuxSurrogate
+        result_small = lux_small([0.5, 0.5])
+        @test all(isfinite.(result_small))
+        @test length(result_small) == 2
+        
+        # Test with no hidden layers (linear model)
+        lux_linear = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; hidden_layers=Int[], n_samples=20, maxiters=5)
+        @test lux_linear isa LuxSurrogate
+        result_linear = lux_linear([0.5, 0.5])
+        @test all(isfinite.(result_linear))
+        @test length(result_linear) == 2
+        
+        # Test with custom activation function (keep it simple)
+        lux_relu = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; activation=relu, hidden_layers=[4], n_samples=25, maxiters=5)
+        @test lux_relu isa LuxSurrogate
+        result_relu = lux_relu([0.5, 0.5])
+        @test all(isfinite.(result_relu))
+        @test length(result_relu) == 2
+        
+        # Test with custom optimizer (LBFGS - faster for small problems)
+        lux_lbfgs = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]]; optimizer=LBFGS(), n_samples=20, maxiters=3)
+        @test lux_lbfgs isa LuxSurrogate
+        result_lbfgs = lux_lbfgs([0.5, 0.5])
+        @test all(isfinite.(result_lbfgs))
+        @test length(result_lbfgs) == 2
+        
+        # Test type preservation with keyword arguments
+        xy_f32 = Float32[0.5f0, 0.5f0]
+        @test eltype(lux_samples(xy_f32)) == Float32
+        @test eltype(lux_small(xy_f32)) == Float32
+        @test eltype(lux_linear(xy_f32)) == Float32
     end
 end
