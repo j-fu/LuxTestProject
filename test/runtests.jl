@@ -96,11 +96,6 @@ end
         xy_max = [1.0, 1.0]
         result_max = lux(xy_max)  # Using callable interface
         @test_nowarn result_max = lux(xy_max)
-        
-        # Test the mutating version for backward compatibility
-        result_mut = zeros(2)
-        @test_nowarn luxeval!(result_mut, lux, xy_outside)
-        @test all(isfinite.(result_mut))
     end
     
     @testset "Consistency Between Original and Loaded Surrogate" begin
@@ -147,19 +142,25 @@ end
         @test all(isfinite.(result_triple))
     end
     
-    @testset "Backward Compatibility Tests" begin
-        # Test that luxeval and luxeval! still work for backward compatibility
+    @testset "Type Preservation Tests" begin
         lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
-        xy = [0.5, 0.5]
         
-        # Test luxeval function
-        result_luxeval = luxeval(lux, xy)
-        result_callable = lux(xy)
-        @test norm(result_luxeval - result_callable) < 1e-10
+        # Test with Float64 input
+        xy_f64 = [0.5, 0.5]
+        result_f64 = lux(xy_f64)
+        @test eltype(result_f64) == Float64
+        @test eltype(xy_f64) == eltype(result_f64)
         
-        # Test luxeval! function
-        result_mut = zeros(2)
-        luxeval!(result_mut, lux, xy)
-        @test norm(result_mut - result_callable) < 1e-10
+        # Test with Float32 input
+        xy_f32 = Float32[0.5f0, 0.5f0]
+        result_f32 = lux(xy_f32)
+        @test eltype(result_f32) == Float32
+        @test eltype(xy_f32) == eltype(result_f32)
+        
+        # Test with BigFloat input (if supported)
+        xy_big = BigFloat[0.5, 0.5]
+        result_big = lux(xy_big)
+        @test eltype(result_big) == BigFloat
+        @test eltype(xy_big) == eltype(result_big)
     end
 end

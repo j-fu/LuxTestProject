@@ -10,7 +10,7 @@ using LinearAlgebra
 using Zygote  # Add Zygote for automatic differentiation
 
 # Export the main types and functions
-export AbstractLuxSurrogate, LuxSurrogate, luxsave, luxload, luxeval!, luxeval
+export AbstractLuxSurrogate, LuxSurrogate, luxsave, luxload
 
 """
    AbstractLuxSurrogate
@@ -198,8 +198,11 @@ end
    (lux::LuxSurrogate)(input)
 
 Make LuxSurrogate callable. Evaluate trained surrogate at n-vector `input`, returns m-vector result.
+The output will have the same element type as the input.
 """
 function (lux::LuxSurrogate)(input)
+    T = eltype(input)  # Get the element type of input
+    
     # Normalize input to the same range used during training (use Float32)
     normalized_input = zeros(Float32, lux.input_dim)
     for i in 1:lux.input_dim
@@ -212,33 +215,8 @@ function (lux::LuxSurrogate)(input)
     # Evaluate the model
     output, _ = Lux.apply(lux.model, normalized_input, lux.parameters, lux.state)
     
-    # Convert back to Float64 and return
-    return Float64.(output)
-end
-
-"""
-   luxeval!(result, lux::LuxSurrogate, input)
-
-Evaluate trained surrogate at n-vector `input`, result is written to m-vector `result`.
-This function is kept for backward compatibility.
-"""
-function luxeval!(result, lux::LuxSurrogate, input)
-    output = lux(input)
-    # Copy result to the output vector
-    for i in 1:min(length(result), length(output))
-        result[i] = output[i]
-    end
-    return nothing
-end
-
-"""
-   luxeval(lux::LuxSurrogate, input)
-
-Evaluate trained surrogate at n-vector `input`, returns m-vector result.
-This function is kept for backward compatibility.
-"""
-function luxeval(lux::LuxSurrogate, input)
-    return lux(input)
+    # Convert to the same type as input
+    return T.(output)
 end
 
 end # module LuxTestProject
