@@ -19,7 +19,7 @@ using LinearAlgebra
     # Use a point within the training range (modified from README for robustness)
     xy = [0.5, 2.0]  
     oresult = original(xy)
-    luxresult = luxeval(lux1, xy)
+    luxresult = lux1(xy)  # Using callable interface
     
     error_norm = norm(oresult - luxresult)
     

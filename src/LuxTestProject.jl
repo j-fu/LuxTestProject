@@ -195,11 +195,11 @@ function _deserialize_model(layers_data)
 end
 
 """
-   luxeval!(result, lux::LuxSurrogate, input)
+   (lux::LuxSurrogate)(input)
 
-Evaluate trained surrogate at n-vector `input`, result is written to m-vector `result`
+Make LuxSurrogate callable. Evaluate trained surrogate at n-vector `input`, returns m-vector result.
 """
-function luxeval!(result, lux::LuxSurrogate, input)
+function (lux::LuxSurrogate)(input)
     # Normalize input to the same range used during training (use Float32)
     normalized_input = zeros(Float32, lux.input_dim)
     for i in 1:lux.input_dim
@@ -212,23 +212,33 @@ function luxeval!(result, lux::LuxSurrogate, input)
     # Evaluate the model
     output, _ = Lux.apply(lux.model, normalized_input, lux.parameters, lux.state)
     
-    # Copy result to the output vector (convert back to Float64 if needed)
+    # Convert back to Float64 and return
+    return Float64.(output)
+end
+
+"""
+   luxeval!(result, lux::LuxSurrogate, input)
+
+Evaluate trained surrogate at n-vector `input`, result is written to m-vector `result`.
+This function is kept for backward compatibility.
+"""
+function luxeval!(result, lux::LuxSurrogate, input)
+    output = lux(input)
+    # Copy result to the output vector
     for i in 1:min(length(result), length(output))
-        result[i] = Float64(output[i])
+        result[i] = output[i]
     end
-    
     return nothing
 end
 
 """
    luxeval(lux::LuxSurrogate, input)
 
-Evaluate trained surrogate at n-vector `input`, returns m-vector result
+Evaluate trained surrogate at n-vector `input`, returns m-vector result.
+This function is kept for backward compatibility.
 """
 function luxeval(lux::LuxSurrogate, input)
-    result = zeros(lux.output_dim)
-    luxeval!(result, lux, input)
-    return result
+    return lux(input)
 end
 
 end # module LuxTestProject

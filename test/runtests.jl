@@ -64,7 +64,7 @@ end
         
         for xy in test_points
             oresult = test_func(xy)
-            luxresult = luxeval(lux, xy)
+            luxresult = lux(xy)  # Using callable interface
             
             error_norm = norm(oresult - luxresult)
             
@@ -83,21 +83,21 @@ end
         xy_outside = [2.0, 2.0]  # Outside the training ranges
         
         # Should not throw an error due to clamping
-        result = luxeval(lux, xy_outside)
-        @test_nowarn result = luxeval(lux, xy_outside)
+        result = lux(xy_outside)  # Using callable interface
+        @test_nowarn result = lux(xy_outside)
         @test all(isfinite.(result))
         
         # Test with minimum valid input
         xy_min = [-1.0, -1.0]
-        result_min = luxeval(lux, xy_min)
-        @test_nowarn result_min = luxeval(lux, xy_min)
+        result_min = lux(xy_min)  # Using callable interface
+        @test_nowarn result_min = lux(xy_min)
         
         # Test with maximum valid input  
         xy_max = [1.0, 1.0]
-        result_max = luxeval(lux, xy_max)
-        @test_nowarn result_max = luxeval(lux, xy_max)
+        result_max = lux(xy_max)  # Using callable interface
+        @test_nowarn result_max = lux(xy_max)
         
-        # Test the mutating version as well
+        # Test the mutating version for backward compatibility
         result_mut = zeros(2)
         @test_nowarn luxeval!(result_mut, lux, xy_outside)
         @test all(isfinite.(result_mut))
@@ -112,8 +112,8 @@ end
         
         # Test that original and loaded surrogates give same results
         xy = [0.3, 0.3]
-        result1 = luxeval(lux, xy)
-        result2 = luxeval(lux_loaded, xy)
+        result1 = lux(xy)  # Using callable interface
+        result2 = lux_loaded(xy)  # Using callable interface
         
         @test norm(result1 - result2) < 1e-10  # Should be essentially identical
         
@@ -130,7 +130,7 @@ end
         lux_single = LuxSurrogate(single_output, [[-1.0, 1.0], [-1.0, 1.0]])
         @test lux_single.output_dim == 1  # Should correctly detect 1 output dimension
         
-        result = luxeval(lux_single, [0.5, 0.5])
+        result = lux_single([0.5, 0.5])  # Using callable interface
         @test length(result) == 1
         @test isfinite(result[1])
         
@@ -142,8 +142,24 @@ end
         lux_triple = LuxSurrogate(triple_output, [[-1.0, 1.0], [-1.0, 1.0]])
         @test lux_triple.output_dim == 3  # Should correctly detect 3 output dimensions
         
-        result_triple = luxeval(lux_triple, [0.5, 0.5])
+        result_triple = lux_triple([0.5, 0.5])  # Using callable interface
         @test length(result_triple) == 3
         @test all(isfinite.(result_triple))
+    end
+    
+    @testset "Backward Compatibility Tests" begin
+        # Test that luxeval and luxeval! still work for backward compatibility
+        lux = LuxSurrogate(test_func, [[-1.0, 1.0], [-1.0, 1.0]])
+        xy = [0.5, 0.5]
+        
+        # Test luxeval function
+        result_luxeval = luxeval(lux, xy)
+        result_callable = lux(xy)
+        @test norm(result_luxeval - result_callable) < 1e-10
+        
+        # Test luxeval! function
+        result_mut = zeros(2)
+        luxeval!(result_mut, lux, xy)
+        @test norm(result_mut - result_callable) < 1e-10
     end
 end

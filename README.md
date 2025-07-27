@@ -24,6 +24,6 @@ lux1 = luxload("test.lux")
 
 xy = [0.5, 2.0]
 oresult = original(xy)
-luxresult = luxeval(lux1, xy)
+luxresult = lux1(xy)  # LuxSurrogate is now callable!
 @test norm(oresult - luxresult) < 0.1
 ```
